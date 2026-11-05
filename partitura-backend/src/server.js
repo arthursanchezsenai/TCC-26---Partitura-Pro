@@ -1,36 +1,84 @@
 require('dotenv').config();
 
-const path = require('path');
 const express = require('express');
 const cors = require('cors');
+
+// Inicialização do banco de dados
 require('./database/db');
 
+// Rotas
 const authRoutes = require('./routes/auth');
 const partiturasRoutes = require('./routes/partituras');
 const comentariosRoutes = require('./routes/comentarios');
 
 const app = express();
-const port = Number(process.env.PORT) || 3000;
 
-app.use(cors());
+const PORT = process.env.PORT || 3000;
+
+// Configurações gerais
+app.disable('x-powered-by');
+
+app.use(cors({
+    origin: process.env.FRONTEND_URL
+        ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+        : true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, '..', '..')));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-app.get('/api/health', (_req, res) => {
-	res.json({ status: 'ok', servico: 'partitura-backend' });
+// Rota principal
+app.get('/', (req, res) => {
+    res.json({
+        mensagem: 'API Partitura funcionando!',
+        status: 'online'
+    });
 });
+
+// Verificação de saúde
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        servico: 'partitura-backend',
+        mensagem: 'Servidor funcionando corretamente.'
+    });
+});
+
+// Rotas da aplicação
 app.use('/api/auth', authRoutes);
 app.use('/api/partituras', partiturasRoutes);
 app.use('/api/comentarios', comentariosRoutes);
 
-app.use((req, res) => res.status(404).json({ erro: 'Rota não encontrada.' }));
-app.use((error, _req, res, _next) => {
-	console.error(error);
-	res.status(500).json({ erro: 'Erro interno do servidor.' });
+// Rota não encontrada
+app.use((req, res) => {
+    res.status(404).json({
+        erro: 'Rota não encontrada.',
+        rota: req.originalUrl
+    });
 });
 
+// Tratamento centralizado de erros
+app.use((error, req, res, next) => {
+    console.error('Erro no servidor:', error);
+
+    if (res.headersSent) {
+        return next(error);
+    }
+
+    res.status(error.status || 500).json({
+        erro: error.status && error.status < 500
+            ? error.message
+            : 'Erro interno do servidor.'
+    });
+});
+
+// Inicialização
 if (require.main === module) {
-	app.listen(port, () => console.log(`Servidor rodando em http://localhost:${port}`));
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Servidor rodando na porta ${PORT}`);
+    });
 }
 
 module.exports = app;
